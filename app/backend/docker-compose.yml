@@ -13,7 +13,19 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+  postgres:
+    image: postgres:15
+    container_name: postgres_db
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: poll_db
+      POSTGRES_USER: poll_user
+      POSTGRES_PASSWORD: poll_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
 
 volumes:
   redis_data:
+  postgres_data:
 

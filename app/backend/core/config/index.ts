@@ -22,6 +22,7 @@ const envSchema = z.object({
     LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"])
         .default("info"),
     REDIS_URL: z.string().default("redis://localhost:6379"),
+    DATABASE_URL: z.string().default("postgresql://localhost:5432/poll_db"),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -52,6 +53,7 @@ export const config = {
     isProduction: parsed.data.NODE_ENV === "production",
     isDevelopment: parsed.data.NODE_ENV === "development",
     redisUrl: parsed.data.REDIS_URL,
+    databaseUrl: parsed.data.DATABASE_URL,
 } as const;
 
 export type Config = typeof config;
