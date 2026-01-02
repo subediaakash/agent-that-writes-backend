@@ -10,8 +10,8 @@ import {
     validateRequest,
 } from "./middleware/validator.js";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
-import { runJob } from "./orchestrator.js";
 import type { NextFunction, Request, Response } from "express";
+import { generateQueue } from "../workers/queues/generateQueue.js";
 
 const app = express();
 
@@ -93,20 +93,67 @@ app.post(
         try {
             const { prompt } = req.body;
 
+            const job = await generateQueue.add("generate-backend", {
+                prompt,
+                requestId: req.id,
+            });
+
             logger.info(
                 { requestId: req.id, promptLength: prompt.length },
                 "Starting backend generation",
             );
 
-            const result = await runJob(prompt, req.id);
-
-            res.status(result.success ? 200 : 207).json({
-                ...result,
-                requestId: req.id,
+            res.status(202).json({
+                message: "Job queued",
+                jobId: job.id,
+                statusUrl: `/jobs/${job.id}`,
             });
         } catch (err) {
             next(err);
         }
+    },
+);
+
+// Check job status
+app.get(
+    "/jobs/:jobId",
+    async (req: Request<{ jobId: string }>, res: Response) => {
+        const { jobId } = req.params;
+        const job = await generateQueue.getJob(jobId);
+
+        if (!job) {
+            res.status(404).json({ error: "Job not found" });
+            return;
+        }
+
+        const state = await job.getState();
+        const progress = job.progress;
+
+        res.json({
+            jobId: job.id,
+            state, // "waiting" | "active" | "completed" | "failed"
+            progress,
+            result: state === "completed" ? job.returnvalue : undefined,
+            error: state === "failed" ? job.failedReason : undefined,
+            createdAt: job.timestamp,
+        });
+    },
+);
+
+// Cancel a job
+app.delete(
+    "/jobs/:jobId",
+    async (req: Request<{ jobId: string }>, res: Response) => {
+        const { jobId } = req.params;
+        const job = await generateQueue.getJob(jobId);
+
+        if (!job) {
+            res.status(404).json({ error: "Job not found" });
+            return;
+        }
+
+        await job.remove();
+        res.json({ message: "Job cancelled" });
     },
 );
 

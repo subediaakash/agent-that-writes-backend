@@ -1,7 +1,11 @@
 import dotenv from "dotenv";
 import { z } from "zod";
+import path from "path";
+import { fileURLToPath } from "url";
 
-dotenv.config();
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// Load .env from the shared backend/ directory
+dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
 const envSchema = z.object({
     NODE_ENV: z.enum(["development", "production", "test"]).default(
@@ -17,6 +21,7 @@ const envSchema = z.object({
     RATE_LIMIT_MAX_REQUESTS: z.string().default("10").transform(Number),
     LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"])
         .default("info"),
+    REDIS_URL: z.string().default("redis://localhost:6379"),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -46,6 +51,7 @@ export const config = {
     logLevel: parsed.data.LOG_LEVEL,
     isProduction: parsed.data.NODE_ENV === "production",
     isDevelopment: parsed.data.NODE_ENV === "development",
+    redisUrl: parsed.data.REDIS_URL,
 } as const;
 
 export type Config = typeof config;

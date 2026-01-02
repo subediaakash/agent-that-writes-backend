@@ -1,0 +1,19 @@
+{
+  "name": "workers",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "scripts": {
+    "dev:worker": "bun run index.ts"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "bullmq": "^5.66.4",
+    "ioredis": "^5.8.2"
+  }
+}
