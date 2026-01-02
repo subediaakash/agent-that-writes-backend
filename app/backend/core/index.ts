@@ -14,6 +14,7 @@ import type { NextFunction, Request, Response } from "express";
 import { generateQueue } from "../workers/queues/generateQueue.js";
 import { toNodeHandler } from "better-auth/node";
 import { auth } from "./utils/auth.js";
+import { authMiddleware } from "./middleware/auth-middleware.js";
 
 const app = express();
 
@@ -72,7 +73,7 @@ app.get("/health", (_req: Request, res: Response) => {
     });
 });
 
-app.get("/ready", (_req: Request, res: Response) => {
+app.get("/ready", authMiddleware, (_req: Request, res: Response) => {
     // Add checks for external dependencies here
     const checks = {
         openaiApiKey: !!config.openai.apiKey,

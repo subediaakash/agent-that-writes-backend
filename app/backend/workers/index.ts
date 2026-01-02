@@ -1,8 +1,18 @@
 // worker.ts (separate process!)
-import { Worker } from "bullmq";
-import { connection } from "./lib/redis.js";
-import { runJob } from "../core/orchestrator.js";
-import { logger } from "../core/utils/logger.ts";
+import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
+
+// Load env FIRST before any imports that depend on config
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
+
+// Now dynamically import modules that depend on config
+const { Worker } = await import("bullmq");
+const { connection } = await import("./lib/redis.js");
+const { runJob } = await import("../core/orchestrator.js");
+const { logger } = await import("../core/utils/logger.ts");
+
 import type {
     GenerateJobData,
     GenerateJobResult,
