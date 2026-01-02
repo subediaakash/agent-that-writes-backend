@@ -9,7 +9,11 @@
     "dev": "bun run --watch index.ts",
     "start": "NODE_ENV=production bun run index.ts",
     "lint": "eslint . --ext .ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "db:generate": "bunx dotenv-cli -e ../../../.env -- bunx drizzle-kit generate",
+    "db:migrate": "bunx dotenv-cli -e ../../../.env -- bunx drizzle-kit migrate",
+    "db:push": "bunx dotenv-cli -e ../../../.env -- bunx drizzle-kit push",
+    "db:studio": "bunx dotenv-cli -e ../../../.env -- bunx drizzle-kit studio"
   },
   "devDependencies": {
     "@types/bun": "latest",
@@ -25,6 +29,7 @@
   "dependencies": {
     "@ai-sdk/openai": "^3.0.2",
     "ai": "^6.0.5",
+    "better-auth": "^1.4.10",
     "bullmq": "^5.66.4",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",

@@ -12,6 +12,8 @@ import {
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
 import type { NextFunction, Request, Response } from "express";
 import { generateQueue } from "../workers/queues/generateQueue.js";
+import { toNodeHandler } from "better-auth/node";
+import { auth } from "./utils/auth.js";
 
 const app = express();
 
@@ -28,6 +30,8 @@ app.use(
         allowedHeaders: ["Content-Type", "Authorization", "x-request-id"],
     }),
 );
+
+app.all("/api/auth/{*path}", toNodeHandler(auth));
 
 // ===================
 // Base Middleware

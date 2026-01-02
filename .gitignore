@@ -40,3 +40,4 @@ coverage/
 # Generated workspaces
 app/backend/workers/workspace/
 
+app/backend/core/drizzle/migrations/   
