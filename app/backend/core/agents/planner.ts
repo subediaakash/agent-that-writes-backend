@@ -43,15 +43,43 @@ function buildPlannerPrompt(userPrompt: string): string {
 Task:
 Generate a deterministic file structure for a backend project.
 
-Rules:
-- Stack: Node.js + Express + TypeScript
-- No extra frameworks
-- No explanations
-- Only essential files
-- Output MUST follow schema
-- Include proper error handling patterns
+Stack:
+- Node.js
+- Express
+- TypeScript
+- PostgreSQL
+- Prisma ORM
+
+Architecture rules:
+- Layered architecture
+- src/app.ts → Express app setup
+- src/server.ts → HTTP server bootstrap
+- src/routes/
+- src/controllers/
+- src/services/
+- src/middleware/
+- src/utils/
+
+Prisma rules:
+- Include prisma/schema.prisma
+- Include prisma/migrations (empty directory allowed)
+- Prisma Client must be initialized in a single shared module
+
+Configuration rules:
+- Use environment variables only
+- Include env.example
+- Database URL via environment variables
+
+API rules:
 - Include a health check endpoint
-- Use environment variables for configuration
+- Include centralized error handling middleware
+
+Restrictions:
+- No extra frameworks or tooling
+- No Docker, ESLint, Prettier, or test setup
+- Only essential files
+- No explanations
+- Output MUST strictly follow the schema
 
 User request:
 "${userPrompt}"`;

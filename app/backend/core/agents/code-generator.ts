@@ -75,7 +75,6 @@ export async function generateFile(
         );
     }
 }
-
 function buildFilePrompt(
     filePath: string,
     purpose: string,
@@ -86,31 +85,73 @@ function buildFilePrompt(
         .map((f) => `- ${f.path}: ${f.purpose}`)
         .join("\n");
 
-    return `You are a backend code generator.
+    return `You are a senior backend code generator.
 
 Stack:
 - Node.js
 - Express
 - TypeScript
+- PostgreSQL
+- Prisma ORM
 
-Project Context:
-Package Manager: ${plan.packageManager}
-Other files in project:
+Project context:
+- Package manager: ${plan.packageManager}
+- Architecture: Layered (routes → controllers → services → db)
+- Runtime: Node.js (ESM)
+
+Existing files in the project:
 ${otherFiles}
 
 File to generate:
 ${filePath}
 
-Purpose:
+Purpose of this file:
 ${purpose}
 
-Rules:
-- Generate ONLY this file's content
-- Valid TypeScript or JSON
-- No markdown code blocks
-- No explanations or comments about the code
-- Use ES module imports (import/export)
-- Follow best practices for production code
-- Include proper error handling where appropriate
-- Use environment variables for sensitive data`;
+STRICT RULES (must follow all):
+
+GENERAL:
+- Generate ONLY the content of this file
+- Output must be valid TypeScript or valid JSON
+- No markdown, no explanations, no comments describing the code
+- Use ES module syntax only (import / export)
+- Use async/await (no .then chains)
+- Follow production-ready coding standards
+
+EXPRESS RULES:
+- Route handlers and controllers must be async
+- Errors must be forwarded using next(error)
+- Do NOT send responses inside services
+- Do NOT swallow errors
+- Do NOT start the server in non-server files
+
+PRISMA RULES:
+- Prisma is the ONLY ORM
+- Do NOT use Mongoose or any other ORM
+- Do NOT define database models outside Prisma
+- schema.prisma must define all database models
+- Use Prisma relations, enums, and constraints properly
+- Import PrismaClient ONLY from the shared Prisma module
+- NEVER instantiate PrismaClient inside route handlers or services
+
+DATABASE RULES:
+- All database access must go through Prisma
+- No raw SQL unless absolutely required
+- No database logic inside routes
+
+ENVIRONMENT RULES:
+- Access configuration only via process.env
+- Do NOT hardcode secrets, URLs, ports, or credentials
+- Assume env.example already documents required variables
+
+STYLE & SAFETY:
+- Prefer explicit typing over implicit any
+- Avoid side effects during module import
+- Keep functions small and single-purpose
+- Do not add unused exports or dead code
+
+IMPORTANT:
+- If this file is schema.prisma, generate ONLY Prisma schema syntax
+- If this file is a route/controller/service, follow the layered architecture strictly
+- The generated content must integrate cleanly with the existing files listed above`;
 }
