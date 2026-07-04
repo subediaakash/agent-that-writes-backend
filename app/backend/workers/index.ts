@@ -5,7 +5,7 @@ import { fileURLToPath } from "url";
 
 // Load env FIRST before any imports that depend on config
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
+dotenv.config({ path: path.resolve(__dirname, "../.env") });
 
 // Now dynamically import modules that depend on config
 const { Worker } = await import("bullmq");

@@ -50,6 +50,14 @@ Stack:
 - PostgreSQL
 - Prisma ORM
 
+CRITICAL PRISMA RULES (MANDATORY):
+- Prisma is the ONLY ORM
+- ALL database models MUST be defined ONLY in prisma/schema.prisma
+- NO TypeScript or JavaScript model files are allowed
+- DO NOT create a src/models directory
+- DO NOT create files named *model.ts or *schema.ts
+- Database access happens ONLY via Prisma Client
+
 Architecture rules:
 - Layered architecture
 - src/app.ts → Express app setup
@@ -60,10 +68,10 @@ Architecture rules:
 - src/middleware/
 - src/utils/
 
-Prisma rules:
-- Include prisma/schema.prisma
-- Include prisma/migrations (empty directory allowed)
-- Prisma Client must be initialized in a single shared module
+Prisma structure requirements:
+- prisma/schema.prisma (required)
+- prisma/migrations/ (empty directory allowed)
+- src/db/prisma.ts (shared PrismaClient initialization)
 
 Configuration rules:
 - Use environment variables only
@@ -84,3 +92,4 @@ Restrictions:
 User request:
 "${userPrompt}"`;
 }
+

@@ -2,12 +2,21 @@ import { generateObject } from "ai";
 import { openai } from "@ai-sdk/openai";
 import fs from "fs";
 import path from "path";
+
 import type { PlannerOutput } from "../types/types.js";
 import { FileSchema } from "../types/types.js";
 import { config } from "../config/index.js";
 import { createChildLogger } from "../utils/logger.js";
 import { withRetry } from "../utils/retry.js";
 import { AppError } from "../middleware/errorHandler.js";
+
+const MAX_REGEN_ATTEMPTS = 3;
+
+const FORBIDDEN_LIBRARIES = [
+    "mongoose",
+    "sequelize",
+    "typeorm",
+];
 
 export async function generateFile(
     filePath: string,
@@ -16,69 +25,136 @@ export async function generateFile(
     workspaceRoot: string,
     requestId: string,
 ): Promise<void> {
-    const fileLogger = createChildLogger({
+    const logger = createChildLogger({
         requestId,
         component: "code-generator",
         file: filePath,
     });
 
-    fileLogger.debug("Generating file");
+    const isPrismaSchema = filePath === "prisma/schema.prisma";
+    let lastError: string | null = null;
 
-    const result = await withRetry(
-        async () => {
-            return await generateObject({
-                model: openai(config.openai.model),
-                schema: FileSchema,
-                prompt: buildFilePrompt(filePath, purpose, plan),
-            });
-        },
-        { maxRetries: 3, baseDelayMs: 1000 },
-        `file-generation:${filePath}`,
-    );
+    for (let attempt = 1; attempt <= MAX_REGEN_ATTEMPTS; attempt++) {
+        logger.info({ attempt }, "Generating file");
 
-    // Validate generated content
-    if (!result.object.content || result.object.content.trim().length === 0) {
-        throw new AppError(
-            `Generated empty content for ${filePath}`,
-            500,
-            "EMPTY_CONTENT",
+        const result = await withRetry(
+            async () => {
+                return generateObject({
+                    model: openai(config.openai.model),
+                    schema: FileSchema,
+                    prompt: isPrismaSchema
+                        ? buildPrismaSchemaPrompt(purpose, plan, lastError)
+                        : buildFilePrompt(filePath, purpose, plan, lastError),
+                });
+            },
+            { maxRetries: 2, baseDelayMs: 500 },
+            `file-generation:${filePath}`,
         );
+
+        const content = result.object.content?.trim();
+
+        if (!content) {
+            lastError = "Generated empty content";
+            continue;
+        }
+
+        const violations = validateGeneratedContent(
+            content,
+            filePath,
+            isPrismaSchema,
+        );
+
+        if (violations.length > 0) {
+            lastError = violations.join("; ");
+            logger.warn({ violations }, "Violations detected, regenerating");
+            continue;
+        }
+
+        writeFileSafely(
+            workspaceRoot,
+            result.object.path,
+            content,
+            logger,
+        );
+
+        logger.info("File generated successfully");
+        return;
     }
 
-    // Write file to workspace
-    const fullPath = path.join(workspaceRoot, result.object.path);
+    throw new AppError(
+        `Failed to generate valid file after ${MAX_REGEN_ATTEMPTS} attempts: ${filePath}`,
+        500,
+        "REGEN_FAILED",
+    );
+}
 
-    // Security: ensure the file is within workspace
+/* ───────────────────────── VALIDATION ───────────────────────── */
+
+function validateGeneratedContent(
+    content: string,
+    filePath: string,
+    isPrismaSchema: boolean,
+): string[] {
+    const violations: string[] = [];
+
+    for (const lib of FORBIDDEN_LIBRARIES) {
+        if (content.includes(lib)) {
+            violations.push(`Forbidden library detected: ${lib}`);
+        }
+    }
+
+    if (!isPrismaSchema && content.includes("new PrismaClient(")) {
+        violations.push("PrismaClient instantiated outside shared module");
+    }
+
+    if (isPrismaSchema) {
+        if (content.includes("import ") || content.includes("export ")) {
+            violations.push("TypeScript syntax detected in schema.prisma");
+        }
+        if (!content.includes("datasource db")) {
+            violations.push("Missing datasource db definition");
+        }
+        if (!content.includes("generator client")) {
+            violations.push("Missing Prisma client generator");
+        }
+    }
+
+    return violations;
+}
+
+/* ───────────────────────── FILE WRITE ───────────────────────── */
+
+function writeFileSafely(
+    workspaceRoot: string,
+    filePath: string,
+    content: string,
+    logger: ReturnType<typeof createChildLogger>,
+) {
+    const fullPath = path.join(workspaceRoot, filePath);
     const resolvedPath = path.resolve(fullPath);
-    const resolvedWorkspace = path.resolve(workspaceRoot);
+    const resolvedRoot = path.resolve(workspaceRoot);
 
-    if (!resolvedPath.startsWith(resolvedWorkspace)) {
+    if (!resolvedPath.startsWith(resolvedRoot)) {
         throw new AppError(
-            `Path traversal attempt detected: ${filePath}`,
+            `Path traversal attempt: ${filePath}`,
             400,
             "PATH_TRAVERSAL",
         );
     }
 
-    try {
-        fs.mkdirSync(path.dirname(fullPath), { recursive: true });
-        fs.writeFileSync(fullPath, result.object.content, "utf-8");
-        fileLogger.info("File generated successfully");
-    } catch (error) {
-        const message = error instanceof Error
-            ? error.message
-            : "Unknown error";
-        throw new AppError(
-            `Failed to write file ${filePath}: ${message}`,
-            500,
-            "FILE_WRITE_ERROR",
-        );
-    }
+    fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+    fs.writeFileSync(fullPath, content, "utf-8");
+
+    logger.debug("File written to disk");
 }
+
+/* ───────────────────────── PROMPTS ───────────────────────── */
+
 function buildFilePrompt(
     filePath: string,
     purpose: string,
     plan: PlannerOutput,
+    previousError: string | null,
 ): string {
     const otherFiles = plan.files
         .filter((f) => f.path !== filePath)
@@ -92,66 +168,74 @@ Stack:
 - Express
 - TypeScript
 - PostgreSQL
-- Prisma ORM
+- Prisma ORM (ONLY ORM)
 
-Project context:
-- Package manager: ${plan.packageManager}
-- Architecture: Layered (routes → controllers → services → db)
-- Runtime: Node.js (ESM)
+Architecture:
+routes → controllers → services → Prisma
 
-Existing files in the project:
+Existing files:
 ${otherFiles}
 
 File to generate:
 ${filePath}
 
-Purpose of this file:
+Purpose:
 ${purpose}
 
-STRICT RULES (must follow all):
-
-GENERAL:
-- Generate ONLY the content of this file
-- Output must be valid TypeScript or valid JSON
-- No markdown, no explanations, no comments describing the code
-- Use ES module syntax only (import / export)
-- Use async/await (no .then chains)
-- Follow production-ready coding standards
-
-EXPRESS RULES:
-- Route handlers and controllers must be async
-- Errors must be forwarded using next(error)
-- Do NOT send responses inside services
-- Do NOT swallow errors
-- Do NOT start the server in non-server files
-
-PRISMA RULES:
-- Prisma is the ONLY ORM
-- Do NOT use Mongoose or any other ORM
+STRICT RULES:
+- Generate ONLY this file
+- Valid TypeScript or JSON only
+- ES module syntax only
+- async/await only
+- No explanations, no markdown
+- Do NOT use mongoose, sequelize, typeorm
 - Do NOT define database models outside Prisma
-- schema.prisma must define all database models
-- Use Prisma relations, enums, and constraints properly
-- Import PrismaClient ONLY from the shared Prisma module
-- NEVER instantiate PrismaClient inside route handlers or services
+- Do NOT instantiate PrismaClient here
+- Errors must use next(error)
+- Services must NOT send HTTP responses
+- Use process.env for config
 
-DATABASE RULES:
-- All database access must go through Prisma
-- No raw SQL unless absolutely required
-- No database logic inside routes
-
-ENVIRONMENT RULES:
-- Access configuration only via process.env
-- Do NOT hardcode secrets, URLs, ports, or credentials
-- Assume env.example already documents required variables
-
-STYLE & SAFETY:
-- Prefer explicit typing over implicit any
-- Avoid side effects during module import
-- Keep functions small and single-purpose
-- Do not add unused exports or dead code
+${previousError ? `PREVIOUS FAILURE (DO NOT REPEAT): ${previousError}` : ""}
 
 IMPORTANT:
-- If this file is schema.prisma, generate ONLY Prisma schema syntax
-- If this file is a route/controller/service, follow the layered architecture strictly
-- The generated content must integrate cleanly with the existing files listed above`;
+- Violating any rule makes the output INVALID.`;
+}
+
+function buildPrismaSchemaPrompt(
+    purpose: string,
+    plan: PlannerOutput,
+    previousError: string | null,
+): string {
+    // Extract entity hints from other planned files (controllers, services, routes)
+    const entityHints = plan.files
+        .filter((f) =>
+            f.path.includes("controllers/") ||
+            f.path.includes("services/") ||
+            f.path.includes("routes/")
+        )
+        .map((f) => `- ${f.path}: ${f.purpose}`)
+        .join("\n");
+
+    return `You are a Prisma schema generator.
+
+Purpose of this schema:
+${purpose}
+
+Related files that will use this schema:
+${entityHints}
+
+STRICT RULES:
+- Output ONLY valid Prisma schema syntax
+- PostgreSQL datasource using env("DATABASE_URL")
+- Include Prisma Client generator
+- Define ALL models required based on the purpose above
+- Include proper relations between models (@relation)
+- Use appropriate field types (Int, String, Boolean, DateTime, etc.)
+- Add @id, @unique, @default annotations as needed
+- No TypeScript, no JavaScript, no markdown, no explanations
+- No import/export statements
+
+${previousError ? `PREVIOUS FAILURE (DO NOT REPEAT): ${previousError}` : ""}
+
+Generate a complete prisma/schema.prisma that includes ALL entities needed for the described purpose.`;
 }
